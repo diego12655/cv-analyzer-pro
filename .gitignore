@@ -1,0 +1,18 @@
+﻿# Python
+__pycache__/
+*.pyc
+venv/
+*.db
+
+# Env
+.env
+
+# Node
+node_modules/
+.next/
+build/
+dist/
+
+# Sistema
+.DS_Store
+Thumbs.db
