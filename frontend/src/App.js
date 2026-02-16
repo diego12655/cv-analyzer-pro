@@ -19,7 +19,7 @@ function App() {
   const [error, setError] = useState('');
 
   // Cambiado a 127.0.0.1 para evitar problemas de DNS en local
-  const API_URL = 'http://127.0.0.1:8000';
+  const API_URL = 'https://cv-analyzer-pro-production-0872.up.railway.app';
 
   // --- CARGA DE SESIÓN ---
   useEffect(() => {

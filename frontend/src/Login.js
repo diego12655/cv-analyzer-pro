@@ -7,7 +7,7 @@ function Login({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [isShaking, setIsShaking] = useState(false);
 
-  const API_URL = 'http://127.0.0.1:8000';
+  const API_URL = 'https://cv-analyzer-pro-production-0872.up.railway.app';
 
   const handleSubmit = async (e) => {
     e.preventDefault();

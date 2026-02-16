@@ -33,7 +33,7 @@ app = FastAPI(title="CV Analyzer API - B2B Edition")
 # Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://cv-analyzer-pro-alpha.vercel.app", "http://localhost:3000"],
+    allow_origins=["https://cv-analyzer-pro-alpha.vercel.app", "http://localhost:3000", ""],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
