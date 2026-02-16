@@ -1,27 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, FileText, Star, CheckCircle, AlertCircle, LogOut, Zap } from 'lucide-react';
+import { 
+  Upload, Star, AlertCircle, LogOut, Zap, 
+  ListOrdered, LayoutDashboard, CheckCircle, Download, Loader2
+} from 'lucide-react';
 import Login from './Login';
 import './App.css';
 
 function App() {
+  // --- ESTADOS ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [token, setToken] = useState(null);
   const [credits, setCredits] = useState(0);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [jobDescription, setJobDescription] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+  // Cambiado a 127.0.0.1 para evitar problemas de DNS en local
+  const API_URL = 'http://127.0.0.1:8000';
 
-  // Verificar si hay token al cargar
+  // --- CARGA DE SESIÓN ---
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
-    const savedCredits = localStorage.getItem('credits');
-    
     if (savedToken) {
       setToken(savedToken);
-      setCredits(parseInt(savedCredits) || 0);
       setIsAuthenticated(true);
       loadSessionInfo(savedToken);
     }
@@ -30,18 +34,14 @@ function App() {
   const loadSessionInfo = async (authToken) => {
     try {
       const response = await fetch(`${API_URL}/api/session-info`, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`
-        }
+        headers: { 'Authorization': `Bearer ${authToken}` }
       });
-      
       if (response.ok) {
         const data = await response.json();
         setCredits(data.credits_remaining);
-        localStorage.setItem('credits', data.credits_remaining);
       }
     } catch (err) {
-      console.error('Error loading session:', err);
+      console.error("Error cargando créditos:", err);
     }
   };
 
@@ -52,192 +52,176 @@ function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('credits');
+    localStorage.clear();
     setToken(null);
-    setCredits(0);
     setIsAuthenticated(false);
     setResult(null);
   };
 
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setSelectedFile(file);
-      setError('');
-      setResult(null);
+  // --- ACCIÓN: ANALIZAR ---
+  const handleAnalyze = async () => {
+    if (selectedFiles.length === 0 || !jobDescription) {
+      setError('Por favor sube CVs y añade la descripción del puesto.');
+      return;
     }
-  };
-
-  const analyzeCV = async () => {
-    if (!selectedFile) return;
 
     setAnalyzing(true);
     setError('');
+    
+    const formData = new FormData();
+    selectedFiles.forEach(file => formData.append('files', file));
+    formData.append('job_description', jobDescription);
 
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-
-      const response = await fetch(`${API_URL}/api/analyze`, {
+      const response = await fetch(`${API_URL}/api/analyze-batch`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Error al analizar el CV');
-      }
-
       const data = await response.json();
-      setResult(data);
-      setCredits(data.credits_remaining);
-      localStorage.setItem('credits', data.credits_remaining);
+
+      if (response.ok) {
+        setResult(data);
+        setCredits(data.credits_remaining);
+      } else {
+        setError(data.detail || 'Error en el análisis');
+      }
     } catch (err) {
-      setError(err.message);
+      setError('Error de conexión con el servidor. Verifica que FastAPI esté corriendo.');
     } finally {
       setAnalyzing(false);
     }
   };
 
-  const reset = () => {
-    setSelectedFile(null);
-    setResult(null);
-    setError('');
+  // --- ACCIÓN: EXPORTAR ---
+  const handleExportExcel = async () => {
+    if (!result || !result.ranking) return;
+    setExporting(true);
+    try {
+      const response = await fetch(`${API_URL}/api/export-excel`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ ranking: result.ranking })
+      });
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Ranking_CV_${new Date().getTime()}.xlsx`;
+      a.click();
+    } catch (err) {
+      setError("No se pudo descargar el archivo Excel.");
+    } finally {
+      setExporting(false);
+    }
   };
 
-  // Si no está autenticado, mostrar login
   if (!isAuthenticated) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // Vista principal (igual que antes pero con créditos)
   return (
-    <div className="App">
-      {/* Badge de créditos */}
-      <div className={`credits-badge ${credits <= 1 ? 'low' : ''}`}>
-        <Zap size={18} />
-        {credits} crédito{credits !== 1 ? 's' : ''} restante{credits !== 1 ? 's' : ''}
-      </div>
-
-      {/* Botón de logout */}
-      <button onClick={handleLogout} className="logout-btn">
-        <LogOut size={18} />
-      </button>
-
-      <div className="container">
-        <header className="header">
-          <div className="logo">
-            <FileText size={40} />
+    <div className="app-container">
+      {/* Navbar */}
+      <nav className="navbar">
+        <div className="nav-logo">
+          <LayoutDashboard size={24} />
+          <span><strong>zeptdocs</strong></span>
+        </div>
+        <div className="nav-actions">
+          <div className="credits-display">
+            <Zap size={16} fill="#fbbf24" color="#fbbf24" />
+            <span>{credits} Créditos</span>
           </div>
-          <h1>CV Analyzer Pro</h1>
-          <p>Analiza CVs con Inteligencia Artificial</p>
-        </header>
+          <button onClick={handleLogout} className="logout-btn">
+            <LogOut size={18} /> Salir
+          </button>
+        </div>
+      </nav>
 
+      <div className="main-content">
         {!result ? (
-          <div className="upload-section">
-            <div className="upload-box" onClick={() => document.getElementById('fileInput').click()}>
-              <Upload size={64} />
-              <h2>Sube tu CV</h2>
-              <p>PDF, JPG, PNG o TXT (Máx. 10MB)</p>
-              <input
-                id="fileInput"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.txt"
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
+          <div className="main-card">
+            <div className="section-header">
+              <h1><Star size={28} color="#6366f1" /> Nuevo Análisis</h1>
+              <p>Sube los CVs de tus candidatos para compararlos.</p>
+            </div>
+
+            <div className="input-group">
+              <label>Descripción de la Vacante y funciones a realizar</label>
+              <textarea 
+                className="custom-textarea"
+                placeholder="Ej: Buscamos un experto en React..."
+                value={jobDescription}
+                onChange={(e) => setJobDescription(e.target.value)}
               />
             </div>
 
-            {selectedFile && (
-              <div className="file-preview">
-                <FileText size={24} />
-                <div>
-                  <p className="file-name">{selectedFile.name}</p>
-                  <p className="file-size">{(selectedFile.size / 1024).toFixed(1)} KB</p>
-                </div>
-                <button onClick={() => setSelectedFile(null)} className="btn-remove">✕</button>
+            <div className="input-group">
+              <label>Subir CVs (PDF)</label>
+              <div className="upload-zone" onClick={() => document.getElementById('f').click()}>
+                <Upload size={32} color="#94a3b8" />
+                <p>{selectedFiles.length > 0 ? `${selectedFiles.length} archivos seleccionados` : "Haz clic para seleccionar PDFs"}</p>
+                <input id="f" type="file" multiple accept=".pdf" hidden onChange={(e) => setSelectedFiles(Array.from(e.target.files))} />
               </div>
-            )}
+            </div>
 
-            {error && (
-              <div className="error-box">
-                <AlertCircle size={20} />
-                <p>{error}</p>
-              </div>
-            )}
+            {error && <div className="error-banner"><AlertCircle size={18} /> {error}</div>}
 
-            {selectedFile && (
-              <button onClick={analyzeCV} disabled={analyzing || credits <= 0} className="btn-analyze">
-                {analyzing ? '⏳ Analizando...' : credits <= 0 ? '❌ Sin créditos' : '🚀 Analizar CV'}
-              </button>
-            )}
-
-            {credits <= 0 && (
-              <div className="error-box" style={{marginTop: '20px'}}>
-                <AlertCircle size={20} />
-                <p>Has agotado tus créditos. Solicita un nuevo código de acceso.</p>
-              </div>
-            )}
+            <button className="btn-primary" onClick={handleAnalyze} disabled={analyzing}>
+              {analyzing ? <Loader2 className="spinner" /> : "Iniciar Ranking Inteligente"}
+            </button>
           </div>
         ) : (
-          <div className="results">
-            <div className="result-header">
-              <h2>✅ Análisis Completado</h2>
-              <button onClick={reset} className="btn-secondary">Analizar Otro</button>
-            </div>
-
-            <div className="score-section">
-              <div className="score-circle">
-                <div className="score-value">{result.score}</div>
-                <div className="score-label">de 100</div>
+          <div className="results-view">
+            <div className="results-header">
+              <div className="header-info">
+                <h2><ListOrdered size={24} /> Ranking de Candidatos</h2>
+              </div>
+              <div className="header-actions">
+                <button onClick={handleExportExcel} className="export-btn" disabled={exporting}>
+                  {exporting ? <Loader2 className="spinner" size={18} /> : <Download size={18} />}
+                  Exportar Excel
+                </button>
+                <button onClick={() => setResult(null)} className="btn-secondary">Nueva Búsqueda</button>
               </div>
             </div>
 
-            <div className="info-grid">
-              <div className="info-card">
-                <h3>Nombre</h3>
-                <p>{result.name}</p>
-              </div>
-              {result.email && (
-                <div className="info-card">
-                  <h3>Email</h3>
-                  <p>{result.email}</p>
-                </div>
-              )}
-              {result.phone && (
-                <div className="info-card">
-                  <h3>Teléfono</h3>
-                  <p>{result.phone}</p>
-                </div>
-              )}
+            <div className="table-wrapper">
+              <table className="modern-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Nombre</th>
+                    <th>Puntaje</th>
+                    <th>Ajuste</th>
+                    <th>Análisis IA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.ranking?.map((c, i) => (
+                    <tr key={i}>
+                      <td>{i + 1}</td>
+                      <td><strong>{c.nombre}</strong></td>
+                      <td><span className="score-badge">{c.puntaje}/100</span></td>
+                      <td><span className={`status-tag ${c.ajuste?.toLowerCase()}`}>{c.ajuste}</span></td>
+                      <td className="analysis-text">
+                        <div className="pros">✅ {c.razon_si}</div>
+                        <div className="cons">⚠️ {c.razon_no}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
-            <div className="section">
-              <h3><CheckCircle size={20} /> Fortalezas</h3>
-              <div className="list">
-                {result.strengths.map((item, idx) => (
-                  <div key={idx} className="list-item success">
-                    <Star size={16} />
-                    <p>{item}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="section">
-              <h3><AlertCircle size={20} /> Sugerencias de Mejora</h3>
-              <div className="list">
-                {result.improvements.map((item, idx) => (
-                  <div key={idx} className="list-item warning">
-                    <AlertCircle size={16} />
-                    <p>{item}</p>
-                  </div>
-                ))}
-              </div>
+            <div className="conclusion-box">
+              <h3>Veredicto Final</h3>
+              <p>{result.conclusion}</p>
             </div>
           </div>
         )}
